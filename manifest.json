@@ -1,0 +1,55 @@
+{
+	"name": "8",
+	"short_name": "8",
+	"description": "Tool to do magic",
+	"permissions": [
+		"bookmarks", "topSites", "tabCapture", "storage",
+		"chrome://favicon/"
+	],
+	"icons": [{
+      "src": "/img/logo16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },{
+      "src": "/img/logo48.png",
+      "sizes": "48x48",
+      "type": "image/png"
+    },{
+      "src": "/img/logo128.png",
+      "sizes": "128x128",
+      "type": "image/png"
+    },{
+      "src": "/img/logo512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }],
+	"manifest_version": 2,
+	"commands": {
+		"toggle": {
+			"description": "Toggle tree",
+			"suggested_key": {
+				"default": "Alt+C"
+			}
+		}
+	},
+
+	"domain": "var.best",
+
+	"browser_action": {
+		"default_icon": "/img/logo48.png"
+	},
+	"chrome_url_overrides": {
+		"newtab": "tab.html"
+	},
+
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#333",
+	"theme_color": "#000",
+
+	"content_security_policy": "script-src 'self' 'unsafe-eval' https://www.googletagmanager.com https://ssl.google-analytics.com https://www.google-analytics.com; object-src 'self'",
+
+	"csp": "script-src 'self' 'unsafe-inline'; object-src 'self'",
+	"update_url": "https://clients2.google.com/service/update2/crx",
+	"version": "0.4.2"
+}
