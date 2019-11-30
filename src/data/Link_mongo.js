@@ -1,4 +1,5 @@
 //  mongo://io.cx/pix8#ov2567
+import account from '../account.js'
 
 export default class Link_mongo{
   constructor(u){
@@ -42,6 +43,9 @@ export default class Link_mongo{
     else if(typeof u == 'object'){
       $.extend(this, u);
     }
+
+    if(this.collection == 'files')
+      this.http = '/files/'+this.id;
 
     //this.http = 'http://'+Cfg.host+':'+Cfg.port+'/'+protocol+'/'+way;
     this.load_filers();
@@ -174,6 +178,39 @@ export default class Link_mongo{
     });
   }
 
+  add(itm){
+    return new Promise((ok, no) => {
+      this.load(() => {
+        if(typeof itm.constructor == 'function'){
+          let link = itm;
+          
+          if(this.item.children)
+            this.item.children.push(link.url);
+          else
+            this.item.children = [link.url];
+
+          this.set('children', this.item.children);
+          ok(itm);
+        }
+        else{
+          var item = $.extend({}, this.filter, item);
+          this.W({cmd: 'save', item, collection: this.collection}).then(r => {
+            let link = Link(this.protocol +'://'+ this.domain + '/' + this.collection + '#' + r.item.id);
+            link.item = r.item;
+
+            if(this.item.children)
+              this.item.children.push(r.item.id);
+            else
+              this.item.children = [r.item.id];
+
+            this.set('children', this.item.children);
+            ok(link);
+          });
+        }
+      });
+    });
+  }
+
   remove(cb){
     this.W({cmd: 'remove', id: this.id, collection: this.collection}).then(r => {
       cb(r);
@@ -192,7 +229,6 @@ export default class Link_mongo{
 
     this.item = new Promise((k, n) => {
       this.W({cmd: 'get', filter, collection: this.collection}).then(r => {
-        console.log(r);
         if(!r.item) return cb() || k();
 
         this.item = r.item;
@@ -202,6 +238,17 @@ export default class Link_mongo{
         cb(r.item);
         k(r.item);
       });
+    });
+  }
+
+  checkOwner(cb){
+    this.load(item => {
+      if(account.user)
+         account.user.load(user => {
+           this.own = !!(item.owner == account.user.owner);
+           cb(this.own);
+         });
+      else cb(false);
     });
   }
 
@@ -225,16 +272,17 @@ export default class Link_mongo{
       });
     }
     else this.load(item => {
+      /*
       if(typeof item.children == 'object' && !item.children.length){
         L(item.children).children(cb);
         return;
       }
+      */
 
       var list = item.children || item.items || [];
       var links = [];
 
-
-  		this.W({
+  	  this.W({
         cmd: 'load',
         filter: {id: {$in: list}},
         collection: this.collection
@@ -246,6 +294,8 @@ export default class Link_mongo{
         });
 
         list.forEach(lnk => {
+          if(!lnk) return;
+          
           let link = (lnk.indexOf('://') + 1)?
             L(lnk):
             Link(this.protocol +'://'+ this.domain + '/' + this.collection + '#' + lnk);

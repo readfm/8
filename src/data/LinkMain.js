@@ -47,9 +47,6 @@ export default class LinkMain{
 
   tryDefault(cb){
     var def = Lib.defaults[this.url];
-    console.log(Lib.defaults);
-    console.log(this);
-    console.dir('def: ', this.url, def);
     if(def){
       this.default = def;
       if(typeof def == 'string')

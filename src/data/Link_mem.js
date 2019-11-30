@@ -1,4 +1,5 @@
 import LinkMain from './LinkMain.js';
+const J = NPM.urljoin;
 
 export default class Link_mem extends LinkMain{
   constructor(url){
@@ -32,11 +33,55 @@ export default class Link_mem extends LinkMain{
   }
   */
 
+  children(cb){
+    this.load(item => {
+      let items = [];
+
+      var sub = item.sub || item.children;
+
+      if(!sub) return cb([]);
+
+      if(sub.length)
+        items = sub;
+      else
+        for(let key in sub){
+          let itm = sub[key];
+          if(itm.name) itm.name = key;
+          items.push(itm);
+        }
+
+      items = items.sort((a, b) => {
+        if(!a.order && !b.order) return 0;
+        if(!a.order && b.order) return 1;
+        if(a.order && !b.order) return -1;
+        return a.order - b.order;
+      });
+
+      let links = [];
+
+      items.map(itm => {
+        let link;
+        if(typeof itm == 'string')
+          link = Link(itm);
+        else{
+          link = Link(J(this.url, itm.name));
+          link.item = itm;
+        }
+        
+        links.push(link);
+      });
+
+      cb(links);
+    });
+  }
+
   load(cb){
+    if(this.item) return cb(this.item);
     if(this.host == 'self'){
-      console.log(this);
-      var item = eval(this.path);
+      let path = this.path;
+      path.replace(/\//g, ".sub.");
+      var item = eval(path);
       cb(item);
-    }
+    }  
   }
 }

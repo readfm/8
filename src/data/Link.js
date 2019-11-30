@@ -9,8 +9,9 @@ import Link_local_storage from './Link_local-storage.js';
 import Link_chrome_storage from './Link_chrome-storage.js';
 import Link_chrome_b from './Link_chrome-bookmark.js';
 
+import Axon from '../neuro/Axon.js';
+
 import servers from './servers.js';
-console.log(window.Index)
 
 Link_mongo.servers = Link_fs.servers = Link_http.servers = servers;
 

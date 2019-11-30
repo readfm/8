@@ -20,8 +20,6 @@ class Servers{
           return ok(wsp);
       }
 
-      console.log(host);
-
       this.list[host] = new Promise((k, n) => {
         let ws = new WS({
           server: host,
