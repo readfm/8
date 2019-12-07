@@ -1,19 +1,74 @@
 window = self;
 
 //self.importScripts('npm_bundle_sw.js');
-self.importScripts('npm_bundle.js');
+self.importScripts('//var.best/npm_bundle.js');
 
-self.importScripts('/config.js');
+self.importScripts('//var.best/config.js');
 
-self.importScripts('/libs/ws.js');
+self.importScripts('//var.best/libs/ws.js');
 
-self.importScripts('./lib/zangodb.min.js');
+self.importScripts('//var.best/lib/zangodb.min.js');
 
 var cacheName = 'fractal';
 
 var sync = () => {
 
 }
+
+
+var cfg_ws = {
+  server: Cfg.api,
+  autoReconnect: true
+};
+
+let ws = self.ws = new WS(cfg_ws);
+
+ws.on.session = m => {
+  this.sid = ws.sid = m.sid;
+  ws.session = m;
+};
+
+ws.onUploadProgress = m => {
+  self.sendAll({
+    cmd: 'uploadProgress',
+    progress: m
+  });
+};
+
+ws.onUploadStart = m => {
+  self.sendAll({
+    cmd: 'uploadStart',
+    progress: m
+  });
+};
+
+
+ws.onUploadEnd = m => {
+  self.sendAll({
+    cmd: 'uploadEnd',
+    progress: m
+  });
+};
+
+
+self.DB = new zango.Db('fractal', {
+    files: ['id', 'domain', 'path', 'owner']
+});
+
+self.DB_req = indexedDB.open("fractal", 3);
+DB_req.onupgradeneeded = () => {
+  let DB = DB_req.result;
+
+  if(!DB.objectStoreNames.contains("files")){
+    var files_store = DB.createObjectStore("files", { keyPath: "id" });  
+    files_store.createIndex("domain", "domain", { unique: false }); 
+    files_store.createIndex("path", "path", { unique: false }); 
+    files_store.createIndex("id", "id", { unique: true }); 
+  }
+};
+
+
+console.log('init service-worker');
 
 self.sendAll = m => {
   self.clients.matchAll().then(function(clients) {
@@ -26,7 +81,7 @@ self.sendAll = m => {
 self.syncFiles = () => {
   console.log('syncFiles');
 
-  let files = DB.collection('files');
+  let files = self.DB.collection('files');
 
   files.find({synced: {$exists: false}}).toArray().then(items => {
       console.log(items);
@@ -40,7 +95,7 @@ self.syncFiles = () => {
           console.log(item, content);
           ws.upload(content, file => {
             console.log(file);
-            files.update({
+            files.update({id: file.id}, {
               $set: {
                 synced: (new Date).getTime()
               }
@@ -52,6 +107,10 @@ self.syncFiles = () => {
 
 self.addEventListener('install', (event) => {
   console.log('install step');
+
+
+
+
 
   event.waitUntil(self.skipWaiting());
   
@@ -65,57 +124,9 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   console.log('activate step');
-
-  var cfg_ws = {
-    server: Cfg.api,
-    autoReconnect: true
-  };
-
-  let ws = self.ws = new WS(cfg_ws);
-
-  ws.on.session = m => {
-    this.sid = ws.sid = m.sid;
-    ws.session = m;
-  };
-
-  ws.onUploadProgress = m => {
-    self.sendAll({
-      cmd: 'uploadProgress',
-      progress: m
-    });
-  };
-
-  ws.onUploadStart = m => {
-    self.sendAll({
-      cmd: 'uploadStart',
-      progress: m
-    });
-  };
-
   
-  ws.onUploadEnd = m => {
-    self.sendAll({
-      cmd: 'uploadEnd',
-      progress: m
-    });
-  };
+  event.waitUntil(self.clients.claim())
 
-  
-  self.DB = new zango.Db('fractal', {
-      files: ['id', 'domain', 'path', 'owner']
-  });
-  
-  self.DB_req = indexedDB.open("fractal", 3);
-  DB_req.onupgradeneeded = () => {
-    let DB = DB_req.result;
-
-    if(!DB.objectStoreNames.contains("files")){
-      var files_store = DB.createObjectStore("files", { keyPath: "id" });  
-      files_store.createIndex("domain", "domain", { unique: false }); 
-      files_store.createIndex("path", "path", { unique: false }); 
-      files_store.createIndex("id", "id", { unique: true }); 
-    }
-  };
 
 
   /*
@@ -149,26 +160,44 @@ self.addEventListener('activate', (event) => {
   
   node.on('error', (err) => console.log('js-ipfs node errored', err))
 
-  event.waitUntil(self.clients.claim())
   */
 });
 
 self.addEventListener('fetch', (event) => {
   //console.log(event, event.request.url);
+  console.log(self);
   let db = self.DB_req.result;
 
   if(event.request.url.startsWith(self.location.origin + '/files')){
     let store = db.transaction('files', "readwrite").objectStore('files');
     
     let id = event.request.url.split('/files/')[1];
-    console.log(id);
-    console.log(store, store.get(id));
+
 	var g = store.get(id);
 
      var prom = new Promise((ok, no) => {
        g.onsuccess = ev => {
          console.log(ev);
         let item = g.result;
+
+        if(!item) return caches.open(cacheName).then((cache) => {
+           return cache.match(event.request).then((matched) => {
+             console.log(matched, event);
+               if(matched){
+                 ok(matched);
+                 return matched;
+               }
+
+               let url = event.request.url.replace('http:', 'https:');
+               return fetch(url).then((response) => {
+                 console.log(response);
+                  ok(response);
+                   cache.put(event.request, response.clone());
+                   return response;
+                 });
+            });
+         });
+        
         const head = {
           status: 200,
           statusText: 'OK',
@@ -178,6 +207,7 @@ self.addEventListener('fetch', (event) => {
             'Content-Size': item.size,
           }
         };
+        
         let re = new Response(item.content, head);
         ok(re);
        };

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+	<head></head>
+	<body>
+		<button id='select'>Select video</button>
+		<div>
+			<video-js id="vid1" data-setup='{"techOrder": ["html5"], "sources": [{"src": "./data/mars.webm"}] }'  class="vjs-theme-city" controls autoplay width="640" height="264"></video-js>
+		</div>
+		<script src="./node_modules/video.js/dist/video.js"></script>
+		<link type="text/css" rel="stylesheet" href="./node_modules/video.js/dist/video-js.min.css"/>
+		<link href="./design/videojs/theme-city.css" rel="stylesheet"/>
+		<link href="./design/videojs/fractal.css" rel="stylesheet"/>
+		<script src="./node_modules/videojs-markers-plugin/dist/videojs-markers-plugin.min.js"></script>
+		<link href="./node_modules/videojs-markers-plugin/dist/videojs.markers.plugin.min.css" type="text/css" rel="stylesheet"/>
+		
+		<button id='go'>GO</button>
+		<br/>
+
+		<script type='module'>
+
+// initialize video.js
+
+import './node_modules/jquery/dist/jquery.min.js';
+import './npm_bundle.js';
+import './lib/libs.js';
+
+
+var videoPath = './data/mars.webm';
+
+window.fetchBuf = function(path){
+	return new Promise((ok, no) => {
+		fetch(path).then(response => {
+			response.arrayBuffer().then(function(buffer) {
+				var arr = new Uint8Array(buffer);
+				ok(arr);
+			});
+		})
+	});
+}
+
+
+function parseArguments(text) {
+  text = text.replace(/\s+/g, ' ');
+  var args = [];
+  // Allow double quotes to not split args.
+  text.split('"').forEach(function(t, i) {
+    t = t.trim();
+    if ((i % 2) === 1) {
+      args.push(t);
+    } else {
+      args = args.concat(t.split(" "));
+    }
+  });
+  return args;
+}
+
+var done = m => {
+	console.log(m);
+}
+
+window.ffmpeg_worker = function ffmpeg(cmd, files){
+	var stdout = "";
+	var stderr = "";
+	window.worker = new Worker("worker-asm.js");
+
+
+	return new Promise((ok, no) => {
+		worker.onmessage = function(e) {
+			var msg = e.data;
+
+			switch (msg.type) {
+				case "ready":
+				    var args = parseArguments(cmd);
+					console.log(args);
+					worker.postMessage({
+					  type: "command",
+					  arguments: args,
+					  files: files || []
+					});
+
+					/*
+						worker.postMessage({
+							type: "start", 
+							files: [{name: "video.mp4", data: buf}],
+							//arguments: ['-i', 'video.mp4', 'out.gif'],
+							arguments: ["-version"]
+						});
+					*/
+					break;
+
+				case "stdout":
+					console.log(msg.data);
+					stdout += msg.data + "\n";
+					break;
+
+				case "stderr":
+					console.log(msg.data);
+					stderr += msg.data + "\n";
+					break;
+
+				case 'done':
+					ok(msg);
+					worker.terminate();
+					break;
+
+				case "exit":
+					console.log("Process exited with code " + msg.data);
+					console.log(stdout);
+					break;
+			}
+		};
+	});
+}
+
+
+window.runCommand = function(text, buf) {
+    var args = parseArguments(text);
+    console.log(args);
+    worker.postMessage({
+      type: "command",
+      arguments: args,
+      files: [
+        {
+          "name": "video.mp4",
+          "data": buf
+        }
+      ]
+    });
+}
+
+
+window.addEventListener('DOMContentLoaded', function(){
+	var player = document.getElementById('vid1').player;
+
+	var initMarkers = function(){
+
+		//load the marker plugin
+		player.markers({
+			markerStyle: {
+				'width':'8px',
+				height: '8px',
+				'border-radius': '50%',
+				'background-color': 'orange'
+			},
+
+			markerTip:{
+				display: true,
+
+				text(marker){
+					var seconds = marker.time % 60;
+					var minutes = parseInt(marker.time / 60) % 60;
+					var hours = parseInt(marker.time / (60 * 60)) ;
+					return ((marker.text || '')+' ') + (hours?(hours+':'):'') + minutes + ":" + seconds;
+				},
+
+				time: function(marker) {
+					return marker.time;
+				}
+			},
+
+			breakOverlay:{
+				display: false,
+				displayTime: 3,
+				style:{
+					'width':'100%',
+					'height': '60%',
+					'background-color': 'rgba(0,0,0,0.7)',
+					'color': 'white',
+					'font-size': '14px',
+					'margin-top': '-40px'
+				},
+				text: function(marker) {
+					return "Break overlay: " + marker.overlayText;
+				}
+			},
+
+			breakOverlay:{
+				display: true,
+				displayTime: 3,
+				text: function(marker) {
+					return "This is an break overlay: " + marker.text;
+				}
+			},
+			onMarkerReached: function(marker) {
+				//console.log(marker);
+			},
+			markers: []
+		});
+	};
+
+
+	var keys = {
+		alt: false,
+		ctrl: false
+	};
+
+	var getMarkers = className => {
+		var indexes = [];
+		player.markers.getMarkers().map((mark, i) => {
+			if(mark.class == className) indexes.push(i);
+		});
+		return indexes;
+	};
+
+	document.addEventListener('keydown', ev => {
+		if(ev.key == 'Alt') keys.alt = true;
+		if(ev.key == 'Control') keys.ctrl = true;
+	});
+
+	document.addEventListener('keyup', ev => {
+		if(ev.key == 'Alt') keys.alt = false;
+		if(ev.key == 'Control') keys.ctrl = false;
+	});
+
+	function init(){
+		player.on('seeked', ev => {
+			let time = player.currentTime();
+
+			if(keys.ctrl && !keys.alt){
+				let cName = 'vjs-marker-cropStart';
+				player.markers.remove(getMarkers(cName));
+				keys.start = time;
+				player.markers.add([{
+					time,
+					class: cName,
+					text: 'Crop start'
+				}]);
+			}
+			else
+			if(keys.ctrl && keys.alt){
+				let cName = 'vjs-marker-cropEnd';
+				player.markers.remove(getMarkers(cName));
+				keys.end = time;
+				player.markers.add([{
+					time,
+					class: cName,
+					text: 'Crop end'
+				}]);
+			};
+		});
+
+		initMarkers();
+	}
+
+	init();
+
+
+	document.getElementById('select').addEventListener('click',  function(ev){
+		fileDialog().then(files => {
+			for(var i = 0, f; f = files[i]; i++){
+				var name = f.name;
+
+				if (f.kind === 'file')
+					f = f.getAsFile();
+
+				
+				var type = f.type;
+
+				// Only process video and image files.
+				if(
+					!f.type.match('image.*') && 
+					!f.type.match('video.*')
+				) continue;
+
+
+				if(f){
+					//player.src(f.value);
+
+					var reader = new FileReader();
+					reader.readAsArrayBuffer(f);
+					reader.onload = function(e) {
+						var buf = window.videoBuf = new Uint8Array(e.target.result);
+						window.videoExt = type.split('/')[1];
+						console.log(buf);
+						 var blob = new Blob( [ e.target.result ], { type} );
+						// browser completed reading file - display it
+						var url = URL.createObjectURL(blob);
+						console.log(url);
+
+						player.src({
+							src: url,
+							type
+						});
+					};
+				}
+			};
+		});
+	});
+
+
+	document.getElementById('go').addEventListener('click', ev => {
+		var ext = videoExt || videoPath.split('.').pop();
+		
+		//fetchBuf(videoPath).then(buf => {
+			let files = [
+				{
+				  "name": "video."+ext,
+				  "data": window.videoBuf
+				}
+			  ];
+			  console.log(files);
+			ffmpeg_worker('-i video.'+ext+' -ss '+keys.start+' -to '+keys.end+' -framerate 15 out.gif', files).then(r => {
+				let buf = r.data[0].data;
+				var blob = new Blob( [ buf ], { type: "image/gif" });
+				var imageUrl = URL.createObjectURL( blob );
+
+				let img = new Image;
+				img.src = imageUrl;
+
+				document.body.append(img);
+			});
+		//});
+	});
+
+});
+		
+		
+		</script>
+	</body>
+</html>
